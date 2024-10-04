@@ -81,9 +81,6 @@ end
 
 # 1.2 a-posteriori
 data_test = load("$outdir/data/data_test.jld2", "data_test");
-data_train = load("$outdir/data/data_train.jld2", "data_train");
-
-
 (; e_nm, e_smag, e_cnn, e_cnn_post) = let
     e_nm = zeros(T, size(data_test.data)...)
     e_smag = zeros(T, size(data_test.data)..., 2)
