@@ -22,8 +22,6 @@ using Zygote
 
 include("closure.jl")
 include("cnn.jl")
-include("fno.jl")
-include("groupconv.jl")
 include("training.jl")
 include("filter.jl")
 include("create_les_data.jl")
