@@ -131,18 +131,25 @@ end
     end
 end
 
-#=
-Victor
 @testitem "Convection-Diffusion" setup = [Setup2D, Setup3D] begin
-    for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
-        cd = IncompressibleNavierStokes.convectiondiffusion!(zero.(u), u, setup)
-        c = convection(u, setup)
-        d = diffusion(u, setup)
-        @test all(cd .≈ c .+ d)
+    for (u_ins, u_io, setup, name) in ((Setup2D.u_ins, Setup2D.u_io, Setup2D.setup, Setup2D.name), (Setup3D.u_ins, Setup3D.u_io, Setup3D.setup, Setup3D.name))
+        IncompressibleNavierStokes.convectiondiffusion!(zero.(u_ins), u_ins, setup)
+        cd_ins, ins_time = @timed IncompressibleNavierStokes.convectiondiffusion!(zero.(u_ins), u_ins, setup)
+
+        cd_io, io_time = @timed IncompressibleNavierStokes.convectiondiffusion!(zero.(u_io), u_io, setup)
+
+        if ins_time > io_time
+            @warn("$name IO Array Convection-Diffusion took more time than INS Tuple ($io_time,$ins_time)")
+        end
+
+        c_io = convection(u_io, setup)
+        d_io = diffusion(u_io, setup)
+        @test all(cd_io .≈ c_io .+ d_io)
+        @test cd_io == stack(cd_ins)
     end
 end
 
-=#
+
 @testitem "Momentum" setup = [Setup2D, Setup3D] begin
     for (u_ins, u_io, setup, name) in ((Setup2D.u_ins, Setup2D.u_io, Setup2D.setup, Setup2D.name), (Setup3D.u_ins, Setup3D.u_io, Setup3D.setup, Setup3D.name))
         T = eltype(u_ins[1])

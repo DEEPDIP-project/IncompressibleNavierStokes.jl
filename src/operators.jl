@@ -668,8 +668,8 @@ function convectiondiffusion!(F, u, setup)
     (; dimension, Δ, Δu, N, A, Iu) = grid
     D = dimension()
     e = Offset(D)
-    @assert all(==(N), size.(F))
-    @assert all(==(N), size.(u))
+    @assert all(==(N), size.(F)) || all(N==size(F)[1:D])
+    @assert all(==(N), size.(u)) || all(N==size(u)[1:D])
     visc = 1 / Re
     I0 = oneunit(CartesianIndex{D})
     kernel = convection_diffusion_kernel!(backend, workgroupsize)
@@ -739,7 +739,7 @@ end
                 uβα1 =
                     A[β][α][2][I[α]-(α==β)] * u[I-e(β),β] +
                     A[β][α][1][I[α]+(α!=β)] * u[I-e(β)+e(α),β]
-                uβα2 = A[β][α][2][I[α]] * u[β][I] + A[β][α][1][I[α]+1] * u[I+e(α), β]
+                uβα2 = A[β][α][2][I[α]] * u[I, β] + A[β][α][1][I[α]+1] * u[I+e(α), β]
                 uαuβ1 = uαβ1 * uβα1
                 uαuβ2 = uαβ2 * uβα2
                 ∂βuα1 = (u[I, α] - u[I-e(β), α]) / (β == α ? Δ[β][I[β]] : Δu[β][I[β]-1])

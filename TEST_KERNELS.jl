@@ -4,9 +4,9 @@ using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 Re = 2e3
 n = 128
 x = LinRange(0.0, 1.0, n + 1), LinRange(0.0, 1.0, n + 1);
-setup = Setup(; x=x, Re=Re);
-ustart = random_field(setup, 0.0);
-psolver = psolver_spectral(setup);
+setup = INS.Setup(; x=x, Re=Re);
+ustart = INS.random_field(setup, 0.0);
+psolver = INS.psolver_spectral(setup);
 
 create_right_hand_side_tuple(setup, psolver) = function right_hand_side(u, p, t)
     u = eachslice(u; dims = ndims(u))
