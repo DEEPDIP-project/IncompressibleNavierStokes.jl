@@ -536,7 +536,7 @@ function diffusion!(F, u, setup)
     F
 end
 
-@kernel function diffusion_kernel!(F, u, visc, e, Δ, Δu, Iu, valdims, I0)
+@kernel function diffusion_kernel!(F::Tuple, u::Tuple, visc, e, Δ, Δu, Iu, valdims, I0)
     dims = getval(valdims)
     I = @index(Global, Cartesian)
     I = I + I0
@@ -553,6 +553,26 @@ end
             end
         end
         F[α][I] = f
+    end
+end
+
+@kernel function diffusion_kernel!(F::Array, u::Array, visc, e, Δ, Δu, Iu, valdims, I0)
+    dims = getval(valdims)
+    I = @index(Global, Cartesian)
+    I = I + I0
+    @unroll for α in dims
+        f = F[I, α]
+        if I ∈ Iu[α]
+            @unroll for β in dims
+                Δuαβ = α == β ? Δu[β] : Δ[β]
+                Δa = β == α ? Δ[β][I[β]] : Δu[β][I[β]-1]
+                Δb = β == α ? Δ[β][I[β]+1] : Δu[β][I[β]]
+                ∂a = (u[I, α] - u[I-e(β), α]) / Δa
+                ∂b = (u[I+e(β), α] - u[I, α]) / Δb
+                f += visc * (∂b - ∂a) / Δuαβ[I[β]]
+            end
+        end
+        F[I, α] = f
     end
 end
 

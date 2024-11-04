@@ -1,4 +1,4 @@
-using IncompressibleNavierStokes
+using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 
 # Setup
 Re = 2e3
@@ -29,7 +29,7 @@ f_tuple = create_right_hand_side_tuple(setup, psolver)
 f_tuple(stack(ustart), nothing, 0.0)
 
 f_array = create_right_hand_side_array(setup, psolver)
-f_array(ustart, nothing, 0.0)
+f_array(stack(ustart), nothing, 0.0)
 
 @assert f_tuple(stack(ustart), nothing, 0.0) ≈ f_array(ustart, nothing, 0.0)
 

@@ -38,11 +38,10 @@ end
       
         divergence(setup.u_ins, setup.setup)
         div_ins, ins_time = @timed divergence(setup.u_ins, setup.setup)
-        
         name = setup.name
 
         if ins_time > io_time
-            @warn("$name IO Array took more time than INS Tuple ($io_time,$ins_time)")
+            @warn("$name IO Array Divergence took more time than INS Tuple ($io_time,$ins_time)")
         end
         @test all(!isnan, div_io)
         @test div_io == div_ins
@@ -85,25 +84,9 @@ Victor
         @test pDv ≈ -vGp # Check that D = -G'
     end
 end
+ =#
 
-Simone
-@testitem "Laplacian" setup = [Setup2D, Setup3D] begin
-    using Random, SparseArrays
-    for setup in (Setup2D.setup, Setup3D.setup)
-        (; Ip, dimension) = setup.grid
-        p = randn!(scalarfield(setup))
-        T = eltype(p)
-        p = apply_bc_p(p, T(0), setup)
-        Lp = laplacian(p, setup)
-        @test Lp isa Array{T}
-        ΩLp = scalewithvolume(Lp, setup)
-        @test sum((p.*ΩLp)[Ip]) ≤ 0 # Check negativity
-        L = laplacian_mat(setup)
-        @test L isa SparseMatrixCSC
-        @test sum(abs2, Lp[Ip][:] - L * p[Ip][:]) ≈ 0 atol = 1e-12
-    end
-end
-
+ #=
 Victor
 @testitem "Convection" setup = [Setup2D, Setup3D] begin
     for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
@@ -128,32 +111,27 @@ Victor
         @test uCu ≈ 0 atol = 1e-12 # Check skew-symmetry
     end
 end
+ =#
 
-Simone
 @testitem "Diffusion" setup = [Setup2D, Setup3D] begin
-    for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
-        T = eltype(u[1])
+    for (u_ins, u_io, setup, name) in ((Setup2D.u_ins, Setup2D.u_io, Setup2D.setup, Setup2D.name), (Setup3D.u_ins, Setup3D.u_io, Setup3D.setup, Setup3D.name))
+        T = eltype(u_ins[1])
         (; Iu, Δ, Δu) = setup.grid
-        d = diffusion(u, setup)
-        D = length(u)
-        uDu = if D == 2
-            uDux = u[1] .* Δu[1] .* Δ[2]' .* d[1]
-            uDuy = u[2] .* Δ[1] .* Δu[2]' .* d[2]
-            sum(uDux[Iu[1]]) + sum(uDuy[Iu[2]])
-        elseif D == 3
-            Δu1, Δu2, Δu3 = Δu[1], reshape(Δu[2], 1, :), reshape(Δu[3], 1, 1, :)
-            Δp1, Δp2, Δp3 = Δ[1], reshape(Δ[2], 1, :), reshape(Δ[3], 1, 1, :)
-            uDux = @. u[1] * Δu1 * Δp2 * Δp3 .* d[1]
-            uDuy = @. u[2] * Δp1 * Δu2 * Δp3 .* d[2]
-            uDuz = @. u[3] * Δp1 * Δp2 * Δu3 .* d[3]
-            sum(uDux[Iu[1]]) + sum(uDuy[Iu[2]]) + sum(uDuz[Iu[3]])
+        diffusion(u_io, setup)
+        d_io, io_time = @timed diffusion(u_io, setup)
+
+        diffusion(u_ins, setup)
+        d_ins, ins_time = @timed diffusion(u_ins, setup)
+
+        if ins_time > io_time
+            @warn("$name IO Array Diffusion took more time than INS Tuple ($io_time,$ins_time)")
         end
-        @test d isa Tuple
-        @test d[1] isa Array{T}
-        @test uDu ≤ 0 # Check negativity (dissipation)
+        @test all(!isnan, d_io)
+        @test d_io == stack(d_ins)
     end
 end
 
+#=
 Victor
 @testitem "Convection-Diffusion" setup = [Setup2D, Setup3D] begin
     for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
