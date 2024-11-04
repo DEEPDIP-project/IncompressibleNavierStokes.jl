@@ -1094,8 +1094,10 @@ end
 #     (tupleadd(u...), φ -> (NoTangent(), map(u -> φ, u)...))
 
 "Compute vorticity field (differentiable version)."
-vorticity(u, setup) =
+vorticity(u::Tuple, setup) =
     vorticity!(length(u) == 2 ? scalarfield(setup) : vectorfield(setup), u, setup)
+vorticity(u::Array, setup) =
+    vorticity!(ndims(u) == 3 ? scalarfield(setup) : vectorfield(setup), u, setup)
 
 "Compute vorticity field (in-place version)."
 vorticity!(ω, u, setup) = vorticity!(setup.grid.dimension, ω, u, setup)
@@ -1106,10 +1108,15 @@ function vorticity!(::Dimension{2}, ω, u, setup)
     (; dimension, Δu, N) = grid
     D = dimension()
     e = Offset(D)
-    @kernel function ω!(ω, u)
+    @kernel function ω!(ω, u::Tuple)
         I = @index(Global, Cartesian)
         ω[I] =
             (u[2][I+e(1)] - u[2][I]) / Δu[1][I[1]] - (u[1][I+e(2)] - u[1][I]) / Δu[2][I[2]]
+    end
+    @kernel function ω!(ω, u::Array)
+        I = @index(Global, Cartesian)
+        ω[I] =
+            (u[I+e(1),2] - u[I,2]) / Δu[1][I[1]] - (u[I+e(2),1] - u[I,1]) / Δu[2][I[2]]
     end
     ω!(backend, workgroupsize)(ω, u; ndrange = N .- 1)
     ω
@@ -1121,7 +1128,7 @@ function vorticity!(::Dimension{3}, ω, u, setup)
     (; dimension, Δu, N) = grid
     D = dimension()
     e = Offset(D)
-    @kernel function ω!(ω, u)
+    @kernel function ω!(ω, u::Tuple)
         I = @index(Global, Cartesian)
         for (α, α₊, α₋) in ((1, 2, 3), (2, 3, 1), (3, 1, 2))
             # α₊ = mod1(α + 1, D)
@@ -1129,6 +1136,16 @@ function vorticity!(::Dimension{3}, ω, u, setup)
             ω[α][I] =
                 (u[α₋][I+e(α₊)] - u[α₋][I]) / Δu[α₊][I[α₊]] -
                 (u[α₊][I+e(α₋)] - u[α₊][I]) / Δu[α₋][I[α₋]]
+        end
+    end
+    @kernel function ω!(ω, u::Array)
+        I = @index(Global, Cartesian)
+        for (α, α₊, α₋) in ((1, 2, 3), (2, 3, 1), (3, 1, 2))
+            # α₊ = mod1(α + 1, D)
+            # α₋ = mod1(α - 1, D)
+            ω[α][I] =
+                (u[I+e(α₊),α₋] - u[I,α₋]) / Δu[α₊][I[α₊]] -
+                (u[I+e(α₋),α₊] - u[I,α₊]) / Δu[α₋][I[α₋]]
         end
     end
     ω!(backend, workgroupsize)(ω, u; ndrange = N .- 1)

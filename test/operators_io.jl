@@ -168,30 +168,38 @@ end
     end
 end
 
-#=
-Victor
 @testitem "Other fields" setup = [Setup2D, Setup3D] begin
     using Random
-    for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
-        T = eltype(u[1])
-        D = length(u)
-        p = randn!(scalarfield(setup))
-        ω = vorticity(u, setup)
-        D == 2 && @test ω isa Array{T}
-        D == 3 && @test ω isa Tuple
-        @test smagorinsky_closure(setup)(u, 0.1) isa Tuple
-        @test tensorbasis(u, setup) isa Tuple
-        @test interpolate_u_p(u, setup) isa Tuple
-        D == 2 && @test interpolate_ω_p(ω, setup) isa Array{T}
-        D == 3 && @test interpolate_ω_p(ω, setup) isa Tuple
-        @test Dfield(p, setup) isa Array{T}
-        @test Qfield(u, setup) isa Array{T}
-        D == 2 && @test_throws AssertionError eig2field(u, setup)
-        D == 3 && @test eig2field(u, setup) isa Array{T} broken = D == 3
-        @test kinetic_energy(u, setup) isa Array{T}
-        @test total_kinetic_energy(u, setup) isa T
-        @test dissipation_from_strain(u, setup) isa Array{T}
-        @test get_scale_numbers(u, setup) isa NamedTuple
+    for (u_ins, u_io, setup, name) in ((Setup2D.u_ins, Setup2D.u_io, Setup2D.setup, Setup2D.name), (Setup3D.u_ins, Setup3D.u_io, Setup3D.setup, Setup3D.name))
+        T = eltype(u_ins[1])
+        D = length(u_ins)
+
+        vorticity(u_ins, setup)
+        ω_ins, ins_time = @timed vorticity(u_ins, setup)
+
+        vorticity(u_io, setup)
+        ω_io, io_time = @timed vorticity(u_io, setup)
+
+        if ins_time > io_time
+            @warn("$name IO Array Vorticity took more time than INS Tuple ($io_time,$ins_time)")
+        end
+
+        @assert all(!isnan, stack(ω_io))
+        @assert ω_io == ω_ins
+
+
+#        @test smagorinsky_closure(setup)(u_io, 0.1) isa Tuple
+#        @test tensorbasis(u, setup) isa Tuple
+#        @test interpolate_u_p(u, setup) isa Tuple
+#        D == 2 && @test interpolate_ω_p(ω, setup) isa Array{T}
+#        D == 3 && @test interpolate_ω_p(ω, setup) isa Tuple
+#        @test Dfield(p, setup) isa Array{T}
+#        @test Qfield(u, setup) isa Array{T}
+#        D == 2 && @test_throws AssertionError eig2field(u, setup)
+#        D == 3 && @test eig2field(u, setup) isa Array{T} broken = D == 3
+#        @test kinetic_energy(u, setup) isa Array{T}
+#        @test total_kinetic_energy(u, setup) isa T
+#        @test dissipation_from_strain(u, setup) isa Array{T}
+#        @test get_scale_numbers(u, setup) isa NamedTuple
     end
 end
- =#
