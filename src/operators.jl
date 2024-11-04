@@ -107,7 +107,7 @@ ChainRulesCore.rrule(::typeof(divergence), u, setup) = (
 )
 
 "Compute divergence of velocity field (in-place version)."
-function divergence!(div, u, setup)
+function divergence!(div, u::Tuple, setup)
     (; grid, backend, workgroupsize) = setup
     (; Δ, Ip, Np) = grid
     D = length(u)
@@ -119,12 +119,36 @@ function divergence!(div, u, setup)
     div
 end
 
-@kernel function divergence_kernel!(div, u, Δ, e, I0)
+"Compute divergence of velocity field (in-place version)."
+function divergence!(div, u::Array, setup)
+    (; grid, backend, workgroupsize) = setup
+    (; Δ, Ip, Np) = grid
+    D = ndims(u)-1
+    e = Offset(D)
+    I0 = getoffset(Ip)
+    kernel = divergence_kernel!(backend, workgroupsize)
+    kernel(div, u, Δ, e, I0; ndrange = Np)
+    # kernel(div, u, Δ, e, Val(1:D), true, I0; ndrange = Np)
+    div
+end
+
+@kernel function divergence_kernel!(div, u::Tuple, Δ, e, I0)
     I = @index(Global, Cartesian)
     I = I + I0
     d = zero(eltype(div))
     for α in eachindex(u)
         d += (u[α][I] - u[α][I-e(α)]) / Δ[α][I[α]]
+    end
+    div[I] = d
+end
+
+@kernel function divergence_kernel!(div, u::Array, Δ, e, I0)
+    I = @index(Global, Cartesian)
+    I = I + I0
+    d = zero(eltype(div))
+
+    for α in axes(u,ndims(u))
+        d += (u[I, α] - u[I-e(α), α]) / Δ[α][I[α]]
     end
     div[I] = d
 end
