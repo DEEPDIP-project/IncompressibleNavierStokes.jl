@@ -376,7 +376,7 @@ function convection!(F, u, setup)
     F
 end
 
-@kernel function convection_kernel!(F, u, Δ, Δu, A, Iu, e, valdims, I0)
+@kernel function convection_kernel!(F::Tuple, u::Tuple, Δ, Δu, A, Iu, e, valdims, I0)
     dims = getval(valdims)
     I = @index(Global, Cartesian)
     I = I + I0
@@ -401,6 +401,34 @@ end
             end
         end
         F[α][I] = f
+    end
+end
+
+@kernel function convection_kernel!(F::Array, u::Array, Δ, Δu, A, Iu, e, valdims, I0)
+    dims = getval(valdims)
+    I = @index(Global, Cartesian)
+    I = I + I0
+    @unroll for α in dims
+        f = F[I, α]
+        if I ∈ Iu[α]
+            @unroll for β in dims
+                Δuαβ = α == β ? Δu[β] : Δ[β]
+
+                # Half for u[α], (reverse!) interpolation for u[β]
+                # Note:
+                #     In matrix version, uses
+                #     1*u[α][I-e(β)] + 0*u[α][I]
+                #     instead of 1/2 when u[α][I-e(β)] is at Dirichlet boundary.
+                uαβ1 = (u[I-e(β), α] + u[I, α]) / 2
+                uαβ2 = (u[I, α] + u[I+e(β), α]) / 2
+                uβα1 =
+                    A[β][α][2][I[α]-(α==β)] * u[I-e(β), β] +
+                    A[β][α][1][I[α]+(α!=β)] * u[I-e(β)+e(α), β]
+                uβα2 = A[β][α][2][I[α]] * u[I, β] + A[β][α][1][I[α]+1] * u[I+e(α), β]
+                f -= (uαβ2 * uβα2 - uαβ1 * uβα1) / Δuαβ[I[β]]
+            end
+        end
+        F[I, α] = f
     end
 end
 
@@ -650,8 +678,8 @@ function convectiondiffusion!(F, u, setup)
 end
 
 @kernel inbounds = true function convection_diffusion_kernel!(
-    F,
-    u,
+    F::Tuple,
+    u::Tuple,
     visc,
     Δ,
     Δu,
@@ -683,6 +711,43 @@ end
             end
         end
         F[α][I] = f
+    end
+end
+
+@kernel inbounds = true function convection_diffusion_kernel!(
+    F::Array,
+    u::Array,
+    visc,
+    Δ,
+    Δu,
+    A,
+    Iu,
+    e,
+    valdims,
+    I0,
+)
+    I = @index(Global, Cartesian)
+    I = I + I0
+    dims = getval(valdims)
+    @unroll for α in dims
+        f = F[I, α]
+        if I ∈ Iu[α]
+            @unroll for β in dims
+                Δuαβ = α == β ? Δu[β] : Δ[β]
+                uαβ1 = (u[I-e(β),α] + u[I, α]) / 2
+                uαβ2 = (u[I,α] + u[I+e(β), α]) / 2
+                uβα1 =
+                    A[β][α][2][I[α]-(α==β)] * u[I-e(β),β] +
+                    A[β][α][1][I[α]+(α!=β)] * u[I-e(β)+e(α),β]
+                uβα2 = A[β][α][2][I[α]] * u[β][I] + A[β][α][1][I[α]+1] * u[I+e(α), β]
+                uαuβ1 = uαβ1 * uβα1
+                uαuβ2 = uαβ2 * uβα2
+                ∂βuα1 = (u[I, α] - u[I-e(β), α]) / (β == α ? Δ[β][I[β]] : Δu[β][I[β]-1])
+                ∂βuα2 = (u[I+e(β), α] - u[I, α]) / (β == α ? Δ[β][I[β]+1] : Δu[β][I[β]])
+                f += (visc * (∂βuα2 - ∂βuα1) - (uαuβ2 - uαuβ1)) / Δuαβ[I[β]]
+            end
+        end
+        F[I, α] = f
     end
 end
 

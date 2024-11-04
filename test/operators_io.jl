@@ -142,17 +142,26 @@ Victor
     end
 end
 
-Simone
+=#
 @testitem "Momentum" setup = [Setup2D, Setup3D] begin
-    for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))
-        T = eltype(u[1])
-        m = momentum(u, nothing, T(1), setup)
-        @test m isa Tuple
-        @test m[1] isa Array{T}
-        @test all(all.(!isnan, m))
+    for (u_ins, u_io, setup, name) in ((Setup2D.u_ins, Setup2D.u_io, Setup2D.setup, Setup2D.name), (Setup3D.u_ins, Setup3D.u_io, Setup3D.setup, Setup3D.name))
+        T = eltype(u_ins[1])
+        momentum(u_ins, nothing, T(1), setup)
+        m_ins, ins_time = @timed momentum(u_ins, nothing, T(1), setup)
+
+        momentum(u_io, nothing, T(1), setup)
+        m_io, io_time = @timed momentum(u_io, nothing, T(1), setup)
+
+        if ins_time > io_time
+            @warn("$name IO Array Momentum took more time than INS Tuple ($io_time,$ins_time)")
+        end
+
+        @test all(!isnan, m_io)
+        @test m_io == stack(m_ins)
     end
 end
 
+#=
 Victor
 @testitem "Other fields" setup = [Setup2D, Setup3D] begin
     using Random
