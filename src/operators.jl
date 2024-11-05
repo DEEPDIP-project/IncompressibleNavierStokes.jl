@@ -175,6 +175,8 @@ end
 "Compute pressure gradient (differentiable version)."
 pressuregradient(p, setup) = pressuregradient!(vectorfield(setup), p, setup)
 
+pressuregradient_io(p, setup) = pressuregradient!(vectorfield_io_array(setup), p, setup)
+
 ChainRulesCore.rrule(::typeof(pressuregradient), p, setup) = (
     pressuregradient(p, setup),
     φ -> (
@@ -197,12 +199,22 @@ function pressuregradient!(G, p, setup)
     G
 end
 
-@kernel function pressuregradient_kernel!(G, p, Δu, Iu, e, valdims, I0)
+@kernel function pressuregradient_kernel!(G::Tuple, p, Δu, Iu, e, valdims, I0)
     I = @index(Global, Cartesian)
     I = I0 + I
     @unroll for α in getval(valdims)
         if I ∈ Iu[α]
             G[α][I] = (p[I+e(α)] - p[I]) / Δu[α][I[α]]
+        end
+    end
+end
+
+@kernel function pressuregradient_kernel!(G::Array, p, Δu, Iu, e, valdims, I0)
+    I = @index(Global, Cartesian)
+    I = I0 + I
+    @unroll for α in getval(valdims)
+        if I ∈ Iu[α]
+            G[I, α] = (p[I+e(α)] - p[I]) / Δu[α][I[α]]
         end
     end
 end

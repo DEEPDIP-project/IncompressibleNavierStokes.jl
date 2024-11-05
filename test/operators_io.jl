@@ -40,53 +40,76 @@ end
         div_ins, ins_time = @timed divergence(setup.u_ins, setup.setup)
         name = setup.name
 
-        if ins_time > io_time
-            @warn("$name IO Array Divergence took more time than INS Tuple ($io_time,$ins_time)")
+        if ins_time < io_time
+            @warn("$name Divergence: IO Array took more time than INS Tuple ($io_time,$ins_time)")
         end
         @test all(!isnan, div_io)
         @test div_io == div_ins
     end
 end
-#=
-Victor
+
 @testitem "Pressure gradient" setup = [Setup2D, Setup3D] begin
     using Random
-    for setup in (Setup2D.setup, Setup3D.setup)
+    for setup_ in (Setup2D, Setup3D)
+        setup = setup_.setup
         (; Iu, Ip, dimension) = setup.grid
         D = dimension()
-        v = randn!.(vectorfield(setup))
+        v_ins = randn!.(vectorfield(setup))
+        v_io = cat(v_ins...; dims = ndims(v_ins[1]) + 1)
         p = randn!(scalarfield(setup))
         T = eltype(p)
-        v = apply_bc_u(v, T(0), setup)
+
+
+        apply_bc_u(v_ins, T(0), setup)
+        v_ins, ins_time = @timed apply_bc_u(v_ins, T(0), setup)
+        apply_bc_u(v_io, T(0), setup)
+        v_io, io_time = @timed apply_bc_u(v_io, T(0), setup)
+
+        name = setup_.name
+        if ins_time < io_time
+            @warn("$name apply_bc: IO Array took more time than INS Tuple ($io_time,$ins_time)")
+        end
+        @test v_io == cat(v_ins...; dims = ndims(v_ins[1]) + 1)
+
         p = apply_bc_p(p, T(0), setup)
-        Dv = divergence(v, setup)
-        Gp = pressuregradient(p, setup)
+        Dv = divergence(v_io, setup)
+        
+        pressuregradient_io(p, setup)
+        Gp_io::Array, io_time = @timed pressuregradient_io(p, setup)
+        pressuregradient(p, setup)
+        Gp_ins::Tuple, ins_time = @timed pressuregradient(p, setup)
+
+        if ins_time < io_time
+            @warn("$name pressuregradient: IO Array took more time than INS Tuple ($io_time,$ins_time)")
+        end
+
+        @test Gp_io == cat(Gp_ins...; dims = ndims(Gp_ins[1]) + 1)
+
         ΩDv = scalewithvolume(Dv, setup)
         pDv = sum((p.*ΩDv)[Ip])
         vGp = if D == 2
-            vGpx = v[1] .* setup.grid.Δu[1] .* setup.grid.Δ[2]' .* Gp[1]
-            vGpy = v[2] .* setup.grid.Δ[1] .* setup.grid.Δu[2]' .* Gp[2]
+            vGpx = v_io[:,:,1] .* setup.grid.Δu[1] .* setup.grid.Δ[2]' .* Gp_io[:,:,1]
+            vGpy = v_io[:,:,2] .* setup.grid.Δ[1] .* setup.grid.Δu[2]' .* Gp_io[:,:,2]
             sum(vGpx[Iu[1]]) + sum(vGpy[Iu[2]])
         elseif D == 3
             vGpx =
-                v[1] .* setup.grid.Δu[1] .* reshape(setup.grid.Δ[2], 1, :) .*
-                reshape(setup.grid.Δ[3], 1, 1, :) .* Gp[1]
+                v_io[:,:,:,1] .* setup.grid.Δu[1] .* reshape(setup.grid.Δ[2], 1, :) .*
+                reshape(setup.grid.Δ[3], 1, 1, :) .* Gp_io[:,:,:,1]
             vGpy =
-                v[2] .* setup.grid.Δ[1] .* reshape(setup.grid.Δu[2], 1, :) .*
-                reshape(setup.grid.Δ[3], 1, 1, :) .* Gp[2]
+                v_io[:,:,:,2] .* setup.grid.Δ[1] .* reshape(setup.grid.Δu[2], 1, :) .*
+                reshape(setup.grid.Δ[3], 1, 1, :) .* Gp_io[:,:,:,2]
             vGpz =
-                v[3] .* setup.grid.Δ[1] .* reshape(setup.grid.Δ[2], 1, :) .*
-                reshape(setup.grid.Δu[3], 1, 1, :) .* Gp[3]
+                v_io[:,:,:,3] .* setup.grid.Δ[1] .* reshape(setup.grid.Δ[2], 1, :) .*
+                reshape(setup.grid.Δu[3], 1, 1, :) .* Gp_io[:,:,:,3]
             sum(vGpx[Iu[1]]) + sum(vGpy[Iu[2]]) + sum(vGpz[Iu[3]])
         end
-        @test Gp isa Tuple
-        @test Gp[1] isa Array{T}
+        @test Gp_io isa Array
         @test pDv ≈ -vGp # Check that D = -G'
     end
 end
- =#
 
- #=
+#=
+
 Victor
 @testitem "Convection" setup = [Setup2D, Setup3D] begin
     for (u, setup) in ((Setup2D.u, Setup2D.setup), (Setup3D.u, Setup3D.setup))

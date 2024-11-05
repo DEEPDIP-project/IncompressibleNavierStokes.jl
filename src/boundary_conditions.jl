@@ -157,9 +157,19 @@ ChainRulesCore.rrule(::typeof(apply_bc_temp), temp, t, setup) = (
 )
 
 "Apply velocity boundary conditions (in-place version)."
-function apply_bc_u!(u, t, setup; kwargs...)
+function apply_bc_u!(u::Tuple, t, setup; kwargs...)
     (; boundary_conditions) = setup
     D = length(u)
+    for β = 1:D
+        apply_bc_u!(boundary_conditions[β][1], u, β, t, setup; isright = false, kwargs...)
+        apply_bc_u!(boundary_conditions[β][2], u, β, t, setup; isright = true, kwargs...)
+    end
+    u
+end
+
+function apply_bc_u!(u::Array, t, setup; kwargs...)
+    (; boundary_conditions) = setup
+    D = ndims(u)-1
     for β = 1:D
         apply_bc_u!(boundary_conditions[β][1], u, β, t, setup; isright = false, kwargs...)
         apply_bc_u!(boundary_conditions[β][2], u, β, t, setup; isright = true, kwargs...)
@@ -308,6 +318,22 @@ function apply_bc_u_pullback!(::PeriodicBC, φbar, β, t, setup; isright, kwargs
     φbar
 end
 
+function apply_bc_u!(::PeriodicBC, u::Array, β, t, setup; isright, kwargs...)
+    isright && return u # We do both in one go for "left"
+    (; dimension, N, Iu) = setup.grid
+    D = dimension()
+    for α = 1:D
+        uα, eβ = u[axes(u,1:ndims(u)-1)...,α], Offset{D}()(β)
+        Ia = boundary(β, N, Iu[α], false)
+        Ib = boundary(β, N, Iu[α], true)
+        Ja = Ia .+ eβ
+        Jb = Ib .- eβ
+        @. uα[Ia] = uα[Jb]
+        @. uα[Ib] = uα[Ja]
+    end
+    u
+end
+
 function apply_bc_p!(bc::PeriodicBC, p, β, t, setup; isright, kwargs...)
     isright && return p # We do both in one go for "left"
     (; dimension, N, Ip) = setup.grid
@@ -344,7 +370,7 @@ apply_bc_temp!(bc::PeriodicBC, temp, β, t, setup; isright, kwargs...) =
 apply_bc_temp_pullback!(bc::PeriodicBC, φbar, β, t, setup; isright, kwargs...) =
     apply_bc_p_pullback!(bc, φbar, β, t, setup; isright, kwargs...)
 
-function apply_bc_u!(bc::DirichletBC, u, β, t, setup; isright, dudt = false, kwargs...)
+function apply_bc_u!(bc::DirichletBC, u::Tuple, β, t, setup; isright, dudt = false, kwargs...)
     (; dimension, N, xu, Iu) = setup.grid
     D = dimension()
     bcfunc = if isnothing(bc.u)
@@ -373,6 +399,39 @@ function apply_bc_u!(bc::DirichletBC, u, β, t, setup; isright, dudt = false, kw
             D,
         )
         u[α][I] .= bcfunc.(α, xI..., t)
+    end
+    u
+end
+
+function apply_bc_u!(bc::DirichletBC, u::Array, β, t, setup; isright, dudt = false, kwargs...)
+    (; dimension, N, xu, Iu) = setup.grid
+    D = dimension()
+    bcfunc = if isnothing(bc.u)
+        Returns(0)
+    elseif bc.u isa Tuple
+        (α, args...) -> dudt ? zero(bc.u[α]) : bc.u[α]
+    elseif dudt
+        # Use central difference to approximate dudt
+        h = sqrt(eps(eltype(u[1]))) / 2
+        function (args...)
+            args..., t = args
+            (bc.u(args..., t + h) - bc.u(args..., t - h)) / 2h
+        end
+    else
+        bc.u
+    end
+    for α = 1:D
+        I = boundary(β, N, Iu[α], isright)
+        xI = ntuple(
+            γ -> reshape(
+                xu[α][γ][I.indices[γ]],
+                ntuple(Returns(1), γ - 1)...,
+                :,
+                ntuple(Returns(1), D - γ)...,
+            ),
+            D,
+        )
+        u[I, α] .= bcfunc.(α, xI..., t)
     end
     u
 end

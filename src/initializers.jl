@@ -5,6 +5,10 @@ scalarfield(setup) = fill!(similar(setup.grid.x[1], setup.grid.N), 0)
 vectorfield(setup) =
     ntuple(α -> fill!(similar(setup.grid.x[1], setup.grid.N), 0), setup.grid.dimension())
 
+"Create an empty vector field, ioarray style [n1,n2,D]"
+vectorfield_io_array(setup) =
+  fill!(similar(setup.grid.x[1], setup.grid.N..., setup.grid.dimension()),0)
+
 """
 Create divergence free velocity field `u` with boundary conditions at time `t`.
 The initial conditions of `u[α]` are specified by the function
