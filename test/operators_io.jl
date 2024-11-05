@@ -5,7 +5,7 @@ using TestItemRunner
     using IncompressibleNavierStokes
     T = Float64
     Re = T(1_000)
-    n = 128
+    n = 4
     lims = T(0), T(1)
     x = tanh_grid(lims..., n), tanh_grid(lims..., n, 1.3)
     bc = DirichletBC(), DirichletBC()
@@ -20,7 +20,7 @@ end
     using IncompressibleNavierStokes
     T = Float64
     Re = T(1_000)
-    n = 32
+    n = 4
     lims = T(0), T(1)
     x = tanh_grid(lims..., n, 1.2), tanh_grid(lims..., n, 1.1), cosine_grid(lims..., n)
     bc = DirichletBC(), DirichletBC(), DirichletBC()
@@ -199,20 +199,49 @@ end
 
         vorticity(u_ins, setup)
         ω_ins, ins_time = @timed vorticity(u_ins, setup)
-
         vorticity(u_io, setup)
         ω_io, io_time = @timed vorticity(u_io, setup)
-
         if ins_time > io_time
             @warn("$name IO Array Vorticity took more time than INS Tuple ($io_time,$ins_time)")
         end
+        @test all(!isnan, stack(ω_io))
+        @test ω_io == ω_ins
 
-        @assert all(!isnan, stack(ω_io))
-        @assert ω_io == ω_ins
+        smagorinsky_closure(setup)(u_ins, 0.1)
+        s_ins, ins_time = @timed smagorinsky_closure(setup)(u_ins, 0.1)
+        smagorinsky_closure(setup)(u_io, 0.1)
+        s_io, io_time = @timed smagorinsky_closure(setup)(u_io, 0.1)
+        if ins_time > io_time
+            @warn("$name IO Array Smagorinsky Closure took more time than INS Tuple ($io_time,$ins_time)")
+        end
+        @test all(!isnan, stack(s_io))
+        @test s_io == s_ins
 
+        # test nabla before tensorbasis
 
-#        @test smagorinsky_closure(setup)(u_io, 0.1) isa Tuple
-#        @test tensorbasis(u, setup) isa Tuple
+        using Base.Iterators: flatten
+        tensorbasis(u_ins, setup) isa Tuple
+        tensorbasis(u_io, setup) isa Tuple
+        tb_ins, ins_time = @timed tensorbasis(u_ins, setup)
+        tb_io, io_time = @timed tensorbasis(u_io, setup)
+        if ins_time > io_time
+            @warn("$name IO Array Tensor Basis took more time than INS Tuple ($io_time,$ins_time)")
+        end
+        @test typeof(tb_ins) == typeof(tb_io)
+        for i in [1,2]
+            for j in eachindex(tb_ins[i])
+                for k in eachindex(tb_ins[i][j])
+                    @assert maximum(abs.(tb_io[i][j][k] .- tb_ins[i][j][k])) < 1e-8 "Failed at $i,$j,$k: $(tb_io[i][j][k]) vs $(tb_ins[i][j][k])"
+                end
+            end
+        end
+        #for i in eachindex(tb_ins)
+        #    @test tb_io[i] == tb_ins[i]
+        #end
+#        println(sum(tb_io[1] .- tb_ins[1]))
+#        println(typeof(collect(view(flatten(tb_io) .- flatten(tb_ins),:))))
+#        println(map(maximum, collect(view(flatten(tb_io) .- flatten(tb_ins),:))))
+
 #        @test interpolate_u_p(u, setup) isa Tuple
 #        D == 2 && @test interpolate_ω_p(ω, setup) isa Array{T}
 #        D == 3 && @test interpolate_ω_p(ω, setup) isa Tuple

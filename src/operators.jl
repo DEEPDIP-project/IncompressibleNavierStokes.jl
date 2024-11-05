@@ -1172,10 +1172,14 @@ end
         (uα[I] - uα[I-e(β)]) / Δuβ[I[β]-1] +
         (uα[I-e(α)] - uα[I-e(α)-e(β)]) / Δuβ[I[β]-1]
     ) / 4
-@inline ∇(u, I::CartesianIndex{2}, Δ, Δu) =
+@inline ∇(u::Tuple, I::CartesianIndex{2}, Δ, Δu) =
     @SMatrix [∂x(u[α], I, α, β, Δ[β], Δu[β]) for α = 1:2, β = 1:2]
-@inline ∇(u, I::CartesianIndex{3}, Δ, Δu) =
+@inline ∇(u::Array, I::CartesianIndex{2}, Δ, Δu) =
+    @SMatrix [∂x(u[:,:, α], I, α, β, Δ[β], Δu[β]) for α = 1:2, β = 1:2]
+@inline ∇(u::Tuple, I::CartesianIndex{3}, Δ, Δu) =
     @SMatrix [∂x(u[α], I, α, β, Δ[β], Δu[β]) for α = 1:3, β = 1:3]
+@inline ∇(u::Array, I::CartesianIndex{3}, Δ, Δu) =
+    @SMatrix [∂x(u[:,:,:,α], I, α, β, Δ[β], Δu[β]) for α = 1:3, β = 1:3]
 @inline idtensor(u, I::CartesianIndex{2}) =
     @SMatrix [(α == β) * oneunit(eltype(u[1])) for α = 1:2, β = 1:2]
 @inline idtensor(u, I::CartesianIndex{3}) =
@@ -1276,12 +1280,22 @@ function smagorinsky_closure(setup)
 end
 
 "Compute symmetry tensor basis (differentiable version)."
-function tensorbasis(u, setup)
+function tensorbasis(u::Tuple, setup)
     T = eltype(u[1])
     D = setup.grid.dimension()
     tensorbasis!(
         ntuple(α -> similar(u[1], SMatrix{D,D,T,D * D}, setup.grid.N), D == 2 ? 3 : 11),
         ntuple(α -> similar(u[1], setup.grid.N), D == 2 ? 2 : 5),
+        u,
+        setup,
+    )
+end
+function tensorbasis(u::Array, setup)
+    T = eltype(u[1])
+    D = setup.grid.dimension()
+    tensorbasis!(
+        ntuple(α -> similar(u[axes(u)[1:ndims(u)-1]...,1], SMatrix{D,D,T,D * D}, setup.grid.N), D == 2 ? 3 : 11),
+        ntuple(α -> similar(u[axes(u)[1:ndims(u)-1]...,1], setup.grid.N), D == 2 ? 2 : 5),
         u,
         setup,
     )
