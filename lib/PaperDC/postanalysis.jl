@@ -138,8 +138,8 @@ params = (;
     tburn = T(0.5),
     tsim = T(5),
     savefreq = 50,
-    ndns = 256,
-    nles = [32,],
+    ndns = 64,
+    nles = [32],
     filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
@@ -158,6 +158,7 @@ dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
 docreatedata = false
+docreatedata = true
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
 
 # Computational time
@@ -229,10 +230,9 @@ end
 
 # Train
 let
-    dotrain = false
-    nepoch = 50
+    dotrain = true
+    nepoch = 100
     niter = 200
-    #niter = nothing
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
@@ -249,7 +249,7 @@ let
         # noiselevel = T(1e-3),
         scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-3), period = nepoch),
         nvalid = 64,
-        batchsize = 16,
+        batchsize = 64,
         displayref = true,
         displayupdates = true, # Set to `true` if using CairoMakie
         nupdate_callback = 20,
@@ -325,11 +325,11 @@ end
 
 projectorders = ProjectOrder.First, ProjectOrder.Last
 
+θ_cnn_prior
 # Train
 let
-    dotrain = false
-    nepoch = 10
-    niter = 10
+    dotrain = true
+    nepoch = 1
     dotrain && trainpost(;
         params,
         projectorders,
@@ -339,21 +339,22 @@ let
         postseed = seeds.post,
         dns_seeds_train,
         dns_seeds_valid,
-        nsubstep = 5,
-        nunroll = 10,
-        ntrajectory = 5,
+        nsubstep = 3,
+        nunroll = 3,
+        ntrajectory = 2,
         closure,
-        θ_start = θ_cnn_prior,
+        θ_start = copy(θ_cnn_prior),
         opt = Adam(T(1e-4)),
-        λ = T(5e-8),
-        scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-4), period = nepoch),
-        nunroll_valid = 50,
+        #λ = T(5e-8),
+        #scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-4), period = nepoch),
+        scheduler = nothing,
+        nunroll_valid = 10,
         nupdate_callback = 10,
         displayref = false,
         displayupdates = true,
         loadcheckpoint = false,
         nepoch,
-        niter,
+        niter = 3,
     )
 end
 
@@ -494,6 +495,7 @@ let
             nsubstep,
         )
         epost.nomodel[I] = err(nothing)
+        ## CNN
         err = create_relerr_post(;
             data,
             setup,
@@ -950,14 +952,14 @@ let
 
             # Compute fields
             utimes[i].ref[I] = selectdim(sample.u, ndims(sample.u), it) |> collect
-            utimes[i].nomodel[I,:] = solve(getprev(i, :nomodel), tlims, nothing, nothing)
-            utimes[i].cnn_prior[I,:] = solve(
+            utimes[i].nomodel[I] = solve(getprev(i, :nomodel), tlims, nothing, nothing)
+            utimes[i].cnn_prior[I] = solve(
                 getprev(i, :cnn_prior),
                 tlims,
                 wrappedclosure(closure, setup),
                 device(θ_cnn_prior[igrid, ifil]),
             )
-            utimes[i].cnn_post[I,:] = solve(
+            utimes[i].cnn_post[I] = solve(
                 getprev(i, :cnn_post),
                 tlims,
                 wrappedclosure(closure, setup),
@@ -968,6 +970,7 @@ let
     end
     jldsave("$outdir/solutions.jld2"; u = utimes, t = times_exact, itime_max_DIF)
 end;
+clean();
 
 # Load solution
 solutions = namedtupleload("$outdir/solutions.jld2");
