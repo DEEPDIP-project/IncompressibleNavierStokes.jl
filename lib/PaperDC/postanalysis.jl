@@ -138,9 +138,9 @@ params = (;
     tburn = T(0.5),
     tsim = T(5),
     savefreq = 50,
-    ndns = 4096,
-    nles = [32, 64, 128, 256],
-    filters = (FaceAverage(), VolumeAverage()),
+    ndns = 256,
+    nles = [32,],
+    filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
     method = RKMethods.Wray3(; T),
@@ -191,10 +191,10 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 
 closure, θ_start = cnn(;
     setup = setups[1],
-    radii = [2, 2, 2, 2, 2],
-    channels = [24, 24, 24, 24, params.D],
-    activations = [tanh, tanh, tanh, tanh, identity],
-    use_bias = [true, true, true, true, false],
+    radii = [2, 2, 2],
+    channels = [12, 12, params.D],
+    activations = [tanh, tanh, identity],
+    use_bias = [true, true, false],
     rng = Xoshiro(seeds.θ_start),
 );
 closure.chain
@@ -231,8 +231,8 @@ end
 let
     dotrain = false
     nepoch = 50
-    # niter = 200
-    niter = nothing
+    niter = 200
+    #niter = nothing
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
@@ -249,7 +249,7 @@ let
         # noiselevel = T(1e-3),
         scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-3), period = nepoch),
         nvalid = 64,
-        batchsize = 64,
+        batchsize = 16,
         displayref = true,
         displayupdates = true, # Set to `true` if using CairoMakie
         nupdate_callback = 20,
@@ -329,6 +329,7 @@ projectorders = ProjectOrder.First, ProjectOrder.Last
 let
     dotrain = false
     nepoch = 10
+    niter = 10
     dotrain && trainpost(;
         params,
         projectorders,
@@ -352,7 +353,7 @@ let
         displayupdates = true,
         loadcheckpoint = false,
         nepoch,
-        niter = 100,
+        niter,
     )
 end
 
@@ -416,40 +417,6 @@ end
 
 ########################################################################## #src
 
-# ### Train Smagorinsky model
-#
-# Use a-posteriori error grid search to determine the optimal Smagorinsky constant.
-# Find one constant for each projection order, filter type, and grid size.
-
-let
-    dotrain = false
-    dotrain && trainsmagorinsky(;
-        params,
-        projectorders,
-        outdir,
-        dns_seeds_train,
-        taskid,
-        nunroll = 50,
-        nsubstep = 5,
-        ninfo = 50,
-        θrange = range(t(0), t(0.3), 301),
-    )
-end
-
-# Load trained parameters
-smag = loadsmagorinsky(outdir, params.nles, params.filters, projectorders)
-
-# Extract coefficients
-θ_smag = getfield.(smag, :θ)
-
-θ_smag |> x -> reshape(x, :, 4)
-
-# Computational time
-getfield.(smag, :comptime)
-getfield.(smag, :comptime) |> sum
-
-########################################################################## #src
-
 # ## Prediction errors
 
 # ### Compute a-priori errors
@@ -498,7 +465,6 @@ let
     s = (length(params.nles), length(params.filters), length(projectorders))
     epost = (;
         nomodel = zeros(T, s),
-        smag = zeros(T, s),
         cnn_prior = zeros(T, s),
         cnn_post = zeros(T, s),
     )
@@ -528,17 +494,6 @@ let
             nsubstep,
         )
         epost.nomodel[I] = err(nothing)
-        ## Smagorinsky
-        err = create_relerr_post(;
-            data,
-            setup,
-            psolver,
-            method,
-            closure_model = smagorinsky_closure(setup),
-            nsubstep,
-        )
-        epost.smag[I] = err(θ_smag[I])
-        ## CNN
         err = create_relerr_post(;
             data,
             setup,
@@ -557,7 +512,6 @@ end
 epost = namedtupleload(joinpath(outdir, "epost.jld2"))
 
 epost.nomodel
-epost.smag
 epost.cnn_prior
 epost.cnn_post
 
@@ -630,7 +584,6 @@ with_theme(; palette) do
         )
         for (e, marker, label, color) in [
             (epost.nomodel, :circle, "No closure", Cycled(1)),
-            (epost.smag, :utriangle, "Smagorinsky", Cycled(2)),
             (epost.cnn_prior, :rect, "CNN (Lprior)", Cycled(3)),
             (epost.cnn_post, :diamond, "CNN (Lpost)", Cycled(4)),
         ]
@@ -671,7 +624,7 @@ end
 
 let
     s = length(params.nles), length(params.filters), length(projectorders)
-    keys = [:ref, :nomodel, :smag, :cnn_prior, :cnn_post]
+    keys = [:ref, :nomodel, :cnn_prior, :cnn_post]
     divergencehistory = (; map(k -> k => fill(Point2f[], s), keys)...)
     energyhistory = (; map(k -> k => fill(Point2f[], s), keys)...)
     for (iorder, projectorder) in enumerate(projectorders),
@@ -738,7 +691,6 @@ let
 
         for (sym, closure_model, θ) in [
             (:nomodel, nothing, nothing),
-            (:smag, smagorinsky_closure(setup), θ_smag[I]),
             (:cnn_prior, wrappedclosure(closure, setup), device(θ_cnn_prior[ig, ifil])),
             (:cnn_post, wrappedclosure(closure, setup), device(θ_cnn_post[I])),
         ]
@@ -770,14 +722,12 @@ end
 # Check that energy is within reasonable bounds
 energyhistory.ref .|> extrema
 energyhistory.nomodel .|> extrema
-energyhistory.smag .|> extrema
 energyhistory.cnn_prior .|> extrema
 energyhistory.cnn_post .|> extrema
 
 # Check that divergence is within reasonable bounds
 divergencehistory.ref .|> extrema
 divergencehistory.nomodel .|> extrema
-divergencehistory.smag .|> extrema
 divergencehistory.cnn_prior .|> extrema
 divergencehistory.cnn_post .|> extrema
 
@@ -821,7 +771,6 @@ with_theme(; palette) do
             # ylims!(ax, (1.3, 2.3))
             plots = [
                 (energyhistory.nomodel, :solid, 1, "No closure"),
-                (energyhistory.smag, :solid, 2, "Smagorinsky"),
                 (energyhistory.cnn_prior, :solid, 3, "CNN (prior)"),
                 (energyhistory.cnn_post, :solid, 4, "CNN (post)"),
                 (energyhistory.ref, :dash, 1, "Reference"),
@@ -933,7 +882,6 @@ with_theme(; palette) do
                 yticklabelsvisible = iorder == 1,
             )
             lines!(ax, divergencehistory.nomodel[I]; label = "No closure")
-            lines!(ax, divergencehistory.smag[I]; label = "Smagorinsky")
             lines!(ax, divergencehistory.cnn_prior[I]; label = "CNN (prior)")
             lines!(ax, divergencehistory.cnn_post[I]; label = "CNN (post)")
             lines!(
@@ -963,7 +911,7 @@ end
 let
     s = length(params.nles), length(params.filters), length(projectorders)
     temp = zeros(T, ntuple(Returns(0), params.D + 1))
-    keys = [:ref, :nomodel, :smag, :cnn_prior, :cnn_post]
+    keys = [:ref, :nomodel, :cnn_prior, :cnn_post]
     times = T[0.1, 0.5, 1.0, 5.0]
     itime_max_DIF = 3
     times_exact = copy(times)
@@ -1011,16 +959,14 @@ let
 
             # Compute fields
             utimes[i].ref[I] = selectdim(sample.u, ndims(sample.u), it) |> collect
-            utimes[i].nomodel[I] = solve(getprev(i, :nomodel), tlims, nothing, nothing)
-            utimes[i].smag[I] =
-                solve(getprev(i, :smag), tlims, smagorinsky_closure(setup), θ_smag[I])
-            utimes[i].cnn_prior[I] = solve(
+            utimes[i].nomodel[I,:] = solve(getprev(i, :nomodel), tlims, nothing, nothing)
+            utimes[i].cnn_prior[I,:] = solve(
                 getprev(i, :cnn_prior),
                 tlims,
                 wrappedclosure(closure, setup),
                 device(θ_cnn_prior[igrid, ifil]),
             )
-            utimes[i].cnn_post[I] = solve(
+            utimes[i].cnn_post[I,:] = solve(
                 getprev(i, :cnn_post),
                 tlims,
                 wrappedclosure(closure, setup),
@@ -1031,7 +977,6 @@ let
     end
     jldsave("$outdir/solutions.jld2"; u = utimes, t = times_exact, itime_max_DIF)
 end;
-clean();
 
 # Load solution
 solutions = namedtupleload("$outdir/solutions.jld2");
@@ -1063,7 +1008,7 @@ with_theme(; palette) do
 
                 fields = map(
                     k -> solutions.u[itime][k][igrid, ifil, iorder] |> device,
-                    [:ref, :nomodel, :smag, :cnn_prior, :cnn_post],
+                    [:ref, :nomodel, :cnn_prior, :cnn_post],
                 )
                 specs = map(fields) do u
                     state = (; u)
@@ -1150,7 +1095,6 @@ with_theme(; palette) do
                 # Plot lines in both axes
                 for ax in (ax, ax_zoom)
                     lines!(ax, κ, specs[2]; color = Cycled(1), label = "No model")
-                    lines!(ax, κ, specs[3]; color = Cycled(2), label = "Smagorinsky")
                     lines!(ax, κ, specs[4]; color = Cycled(3), label = "CNN (prior)")
                     lines!(ax, κ, specs[5]; color = Cycled(4), label = "CNN (post)")
                     lines!(
@@ -1263,8 +1207,6 @@ with_theme(; palette) do
 
             for (u, title) in [
                 (utime.nomodel[igrid, ifil, 2], "No closure"),
-                (utime.nomodel[igrid, ifil, 2], "Smagorinsky (DCF)"),
-                # (utime.cnn_prior[igrid, ifil, 2], "CNN (prior, DCF)"),
                 (utime.cnn_post[igrid, ifil, 1], "CNN (post, DIF)"),
                 (utime.cnn_post[igrid, ifil, 2], "CNN (post, DCF)"),
                 (utime.ref[igrid, ifil, 2], "Reference"),
