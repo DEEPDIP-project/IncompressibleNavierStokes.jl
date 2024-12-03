@@ -14,7 +14,7 @@ export default defineConfig({
   outDir: 'REPLACE_ME_DOCUMENTER_VITEPRESS', // This is required for MarkdownVitepress to work correctly...
   // head: [['link', { rel: 'icon', href: 'REPLACE_ME_DOCUMENTER_VITEPRESS_FAVICON' }]],
 
-  ignoreDeadLinks: true, // Reexporting KernelAbstractions.CPU fails otherwise
+  ignoreDeadLinks: false,
 
   head: [
     ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' }],
@@ -90,8 +90,9 @@ export default defineConfig({
             text: 'Guide',
             items: [
               { text: 'Floating point precision', link: '/manual/precision' },
-              { text: 'GPU Support', link: '/manual/gpu' },
+              { text: 'GPU support', link: '/manual/gpu' },
               { text: 'Differentiating code', link: '/manual/differentiability' },
+              { text: 'Sparse matrices', link: '/manual/matrices' },
               { text: 'Temperature equation', link: '/manual/temperature' },
               { text: 'Large eddy simulation', link: '/manual/les' },
               { text: 'SciML', link: '/manual/sciml' },
@@ -186,8 +187,9 @@ export default defineConfig({
             text: 'Guide',
             items: [
               { text: 'Floating point precision', link: '/manual/precision' },
-              { text: 'GPU Support', link: '/manual/gpu' },
+              { text: 'GPU support', link: '/manual/gpu' },
               { text: 'Differentiating code', link: '/manual/differentiability' },
+              { text: 'Sparse matrices', link: '/manual/matrices' },
               { text: 'Temperature equation', link: '/manual/temperature' },
               { text: 'Large eddy simulation', link: '/manual/les' },
               { text: 'SciML', link: '/manual/sciml' },
