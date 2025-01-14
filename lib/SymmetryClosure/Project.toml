@@ -34,7 +34,7 @@ path = "../NeuralClosure"
 [compat]
 Adapt = "4"
 CUDA = "5"
-CairoMakie = "0.12"
+CairoMakie = "0.13"
 ChainRulesCore = "1.25.0"
 ComponentArrays = "0.15"
 FFTW = "1"
